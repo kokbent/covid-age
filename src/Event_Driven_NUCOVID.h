@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <vector>
 #include <iostream>
+#include <iomanip>
 #include <queue>
 #include "Utility.h"
 #include <climits>
@@ -55,9 +56,10 @@ class Event_Driven_NUCOVID {
         } stateType;
 
         // constructor
-        Event_Driven_NUCOVID ( int n, double ki, double ka, double kp, double km, double ks, 
-                               double kh, double kc, double kd, vector<double> kr,
-                               double pc, double pd, vector<double> pdets, double im_dur) {
+        Event_Driven_NUCOVID ( int n, vector<double> ki, double ka, double kp, double km, double ks, 
+                               double kh, double kc, double kd, vector<vector<double>> kr,
+                               vector<double> pc, vector<double> pd, vector<vector<double>> pdets,
+                               double fia, double fid) {
 
             N = n;
             Ki = ki;
@@ -72,29 +74,26 @@ class Event_Driven_NUCOVID {
             Pcrit = pc;
             Pdeath = pd;
             Pdetect = pdets;
-            immunity_duration = im_dur; // Immunity duration is fixed (not exponentially distributed)
             cumu_symptomatic = 0;
 
-
-            frac_infectiousness_As = 0.8;
-            frac_infectiousness_det = 0.15;
+            frac_infectiousness_As = fia;
+            frac_infectiousness_det = fid;
             reset();
         }
 
         int N;                      // population size
-        double Ki;                  // param for exponential exposed duration
-        double Kpres;                // param for exponential time to infectious (presymptomatic)
+        vector<double> Ki;                  // param for exponential exposed duration
         double Kasym;               // param for exponential time to infectious (asymptomatic)
+        double Kpres;                // param for exponential time to infectious (presymptomatic)
         double Kmild;               // param for exponential time to mild from presymp
         double Ksevere;             // param for exponential time to severe from presymp 
         double Khosp;
         double Kcrit;
         double Kdeath;
-        vector<double> Krec;                // param for exponential time to recovery
-        double Pcrit;
-        double Pdeath;
-        vector<double> Pdetect;
-        double immunity_duration;   // duration of recovered/resistant state before becoming susceptible
+        vector<vector<double>> Krec;                // param for exponential time to recovery
+        vector<double> Pcrit;
+        vector<double> Pdeath;
+        vector<vector<double>> Pdetect;
         double frac_infectiousness_As;
         double frac_infectiousness_det;
         size_t cumu_symptomatic;
@@ -108,12 +107,14 @@ class Event_Driven_NUCOVID {
         void run_simulation(double duration, int serial) {
             double start_time = Now;
             int day = (int) Now;
+            cout << setprecision(3) << fixed;
+            cout << "serial\ttime\tKi\tS\tE\tAP\tSYM\tHOS\tCRIT\tDEA\tR\tcumu_sym" << endl; 
             while (next_event() and Now < start_time + duration) {
                 if ((int) Now > day) {
-                    cout << serial << "\t" << (int) Now << "\t"  << state_counts[SUSCEPTIBLE] << "\t" 
+                    cout << serial << "\t" << (int) Now << "\t"  << Ki[day] << "\t" 
+                                          << state_counts[SUSCEPTIBLE] << "\t" 
                                           << state_counts[EXPOSED] << "\t" 
-                                          << state_counts[ASYMPTOMATIC] << "\t" 
-                                          << state_counts[PRESYMPTOMATIC] << "\t" 
+                                          << state_counts[ASYMPTOMATIC] + state_counts[PRESYMPTOMATIC]<< "\t" 
                                           << state_counts[SYMPTOMATIC_MILD] + state_counts[SYMPTOMATIC_SEVERE] << "\t" 
                                           << state_counts[HOSPITALIZED] + state_counts[HOSPITALIZED_CRIT]<< "\t"
                                           << state_counts[CRITICAL] << "\t"
@@ -154,6 +155,11 @@ class Event_Driven_NUCOVID {
         }
         
         double get_detection_modifier(double p, double r) {return p * r + (1.0 - p);}
+        double get_Ki(int day) { return day < Ki.size() ? Ki[day] : Ki[Ki.size() - 1]; }
+        double get_Pdet(int day, int ind) { return day < Pdetect.size() ? Pdetect[day][ind] : Pdetect[Pdetect.size() - 1][ind]; }
+        double get_Pcrit(int day) { return day < Pcrit.size() ? Pcrit[day] : Pcrit[Pcrit.size() - 1]; }
+        double get_Pdeath(int day) { return day < Pdeath.size() ? Pdeath[day] : Pdeath[Pdeath.size() - 1]; }
+        double get_Krec(int day, int ind) { return day < Krec.size() ? Krec[day][ind] : Krec[Krec.size() - 1][ind]; }
 
         void infect() {
             assert(state_counts[SUSCEPTIBLE] > 0);
@@ -182,7 +188,7 @@ class Event_Driven_NUCOVID {
                 Ti = Tpres;
                 add_event(Tpres, PRE);
                 Times.push_back(Ti);
-                Ki_modifier.push_back(get_detection_modifier( Pdetect[1], frac_infectiousness_det ));
+                Ki_modifier.push_back(get_detection_modifier( get_Pdet((int) Ti, 1), frac_infectiousness_det ));
 
                 double Tmild = rand_exp(Kmild, &rng) + Tpres;
                 double Tsevere = rand_exp(Ksevere, &rng) + Tpres;
@@ -192,37 +198,37 @@ class Event_Driven_NUCOVID {
                     Tsym = Tmild;
                     add_event(Tsym, SYMM);
                     Times.push_back(Tsym);
-                    Ki_modifier.push_back(get_detection_modifier( 1 - (1 - Pdetect[1]) * (1 - Pdetect[2]), frac_infectiousness_det ));
+                    Ki_modifier.push_back(get_detection_modifier( 1 - (1 - get_Pdet((int) Ti, 1)) * (1 - get_Pdet((int) Tsym, 2)), frac_infectiousness_det ));
 
-                    Tr = rand_exp(Krec[1], &rng) + Tsym;
+                    Tr = rand_exp(get_Krec((int) Tsym, 1), &rng) + Tsym;
                     add_event(Tr, RECM);
                 } else {
                     // Severe SYMPTOMATIC PATH
                     Tsym = Tsevere;
                     add_event(Tsym, SYMS);
                     Times.push_back(Tsym);
-                    Ki_modifier.push_back(get_detection_modifier( 1 - (1 - Pdetect[1]) * (1 - Pdetect[3]), frac_infectiousness_det ));
+                    Ki_modifier.push_back(get_detection_modifier( 1 - (1 - get_Pdet((int) Ti, 1)) * (1 - get_Pdet((int) Tsym, 3)), frac_infectiousness_det ));
 
                     Th = rand_exp(Khosp, &rng) + Tsym;
                     add_event(Th, HOS);
-                    Times.push_back(Tsym);
-                    Ki_modifier.push_back(get_detection_modifier( 1 - (1 - Pdetect[1]) * (1 - Pdetect[3]) , 0 ));
+                    Times.push_back(Th);
+                    Ki_modifier.push_back(get_detection_modifier( 1 - (1 - get_Pdet((int) Ti, 1)) * (1 - get_Pdet((int) Th, 4)) , 0 ));
 
-                    if (rand_uniform(0, 1, &rng) > Pcrit) {
+                    if (rand_uniform(0, 1, &rng) > get_Pcrit((int) Th)) {
                         // Hospitalized and recovered
-                        Tr = rand_exp(Krec[2], &rng) + Th;
+                        Tr = rand_exp(get_Krec((int) Th, 2), &rng) + Th;
                         add_event(Tr, RECH);
                     } else {
                         // Hospitalized and become critical
                         Tcr = rand_exp(Kcrit, &rng) + Th;
                         add_event(Tcr, CRI);
 
-                        if (rand_uniform(0, 1, &rng) > Pdeath) {
+                        if (rand_uniform(0, 1, &rng) > get_Pdeath((int) Tcr)) {
                             // Critical and recovered
-                            Thc = rand_exp(Krec[3], &rng) + Tcr;
+                            Thc = rand_exp(get_Krec((int) Tcr, 3), &rng) + Tcr;
                             add_event(Thc, HPC);
 
-                            Tr = rand_exp(Krec[4], &rng) + Thc;
+                            Tr = rand_exp(get_Krec((int) Thc, 4), &rng) + Thc;
                             add_event(Tr, RECC);
                         } else {
                             // Critical and die
@@ -239,20 +245,20 @@ class Event_Driven_NUCOVID {
                 Ti = Tasym;
                 add_event(Tasym, ASY);
                 Times.push_back(Ti);
-                Ki_modifier.push_back(get_detection_modifier( Pdetect[0], frac_infectiousness_det ) * frac_infectiousness_As);
+                Ki_modifier.push_back(get_detection_modifier( get_Pdet((int) Ti, 0), frac_infectiousness_det ) * frac_infectiousness_As);
 
                 // time to recovery
-                Tr = rand_exp(Krec[0], &rng) + Tasym;
+                Tr = rand_exp(get_Krec((int) Ti, 0), &rng) + Ti;
                 add_event(Tr, RECA);
             }
             
             // time to next contact
             int bin = 0;
-            double Tc = rand_exp(Ki * Ki_modifier[bin], &rng) + Ti;
+            double Tc = rand_exp(get_Ki((int) Ti) * Ki_modifier[bin], &rng) + Ti;
             while ( Tc < Tr ) {     // does contact occur before recovery?
                 add_event(Tc, CON); // potential transmission event
                 while (bin < Times.size() - 1 and Times[bin+1] < Tc) {bin++;} // update bin if necessary
-                Tc += rand_exp(Ki * Ki_modifier[bin], &rng);
+                Tc += rand_exp(get_Ki((int) Tc) * Ki_modifier[bin], &rng);
             }
 
             // time to become susceptible again (not used for now)
