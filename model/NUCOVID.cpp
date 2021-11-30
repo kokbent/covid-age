@@ -145,22 +145,33 @@ int main() {
     vector<vector<double>> Pdetect{Pdet_asym, Pdet_pres, Pdet_symm, Pdet_syms};
     Pdetect = transpose2dVector(Pdetect);
 
-    //vector<double> Pdetect = {0.2/6, 0.2/6, 0.2, 0.5}; // I -> R transition rate
-    //vector<double> Pdetect = {0, 0, 0, 0}; // I -> R transition rate
     double frac_infectiousness_As = 0.8;
     double frac_infectiousness_det = 0.15;
     double immunity_duration = 10000;
+    vector<Node*> nodes;
+    vector<vector<double>> infection_matrix;
 
-    for(int i=0; i<1; i++ ) {
-        Event_Driven_NUCOVID sim(N, Ki, Kasymp, Kpres, Kmild, Kseve, Khosp, Kcrit,
-                                 Kdeath, Krec, Pcrit, Pdeath, Pdetect, 
-                                 frac_infectiousness_As, frac_infectiousness_det);
-        sim.rng.seed(time(0)); // this simulator has its own RNG which must be seeded as well
-        sim.Now = 9;
-        sim.rand_infect(10);
-        sim.run_simulation(365, i);
-        //cout << sim.current_epidemic_size() << endl;
+    for(int i = 0; i < 2; i++) {
+        Node* n = new  Node(i, N, Ki, Kasymp, Kpres, Kmild, Kseve, Khosp, Kcrit,
+                            Kdeath, Krec, Pcrit, Pdeath, Pdetect,
+                            frac_infectiousness_As, frac_infectiousness_det);
+        nodes.push_back(n);
+        vector<double> inf_prob;
+        for (int j = 0; j < 2; j++) {
+            double r = i == j ? 0.9 : 0.1;
+            inf_prob.push_back(r);
+        }
+        //cout << inf_prob[0] << " " << inf_prob[1] << endl; //debug
+        //cout << n->id << endl;
+        infection_matrix.push_back(inf_prob);
     }
+        
+    Event_Driven_NUCOVID sim(nodes, infection_matrix);
+    sim.rng.seed(time(0)); // this simulator has its own RNG which must be seeded as well
+    sim.Now = 9;
+    sim.rand_infect(10, nodes[0]);
+    //sim.rand_infect(5, nodes[1]);
+    sim.run_simulation(371);
 
     return 0;
 }
