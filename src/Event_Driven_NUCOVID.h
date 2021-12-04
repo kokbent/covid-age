@@ -8,6 +8,7 @@
 #include <queue>
 #include "Utility.h"
 #include <climits>
+#include "sys/stat.h"
 
 using namespace std;
 
@@ -51,6 +52,7 @@ class Node {
         double frac_infectiousness_det; // infectiousness multiplier for detected
         vector<int> state_counts;   // S, E, I, R counts
         size_t cumu_symptomatic;
+        size_t cumu_admission;
         size_t introduced;
 
         // constructor
@@ -74,6 +76,7 @@ class Node {
             Pdeath = pd;
             Pdetect = pdets;
             cumu_symptomatic = 0;
+            cumu_admission = 0;
             introduced = 0;
 
             frac_infectiousness_As = fia;
@@ -135,16 +138,22 @@ class Event_Driven_NUCOVID {
             reset();
         }
 
-        void run_simulation(double duration) {
+        vector<string> run_simulation(double duration, bool print) {
             double start_time = Now;
             int day = (int) Now;
+            vector<string> out_buffer;
+            string header = "node\ttime\tKi\tS\tE\tAP\tSYM\tHOS\tCRIT\tDEA\tR\tcumu_sym\tcumu_adm\tintroduced";
+
             cout << setprecision(3) << fixed;
-            cout << "node\ttime\tKi\tS\tE\tAP\tSYM\tHOS\tCRIT\tDEA\tR\tintroduced" << endl; 
+            out_buffer.push_back(header);
+            if (print) {cout << header << endl;}
             while (next_event() and Now < start_time + duration) {
                 if ((int) Now > day) {
                     for (size_t i = 0; i < nodes.size(); i++) {
                         const Node* n = nodes[i];
-                        cout << n->id << "\t" << (int) Now << "\t"  << n->Ki[day] << "\t" 
+                        stringstream ss;
+                        ss << setprecision(3) << n->id << "\t"   
+                                              << (int) Now << "\t"  << n->Ki[day] << "\t" 
                                               << n->state_counts[SUSCEPTIBLE] << "\t" 
                                               << n->state_counts[EXPOSED] << "\t" 
                                               << n->state_counts[ASYMPTOMATIC] + n->state_counts[PRESYMPTOMATIC]<< "\t" 
@@ -153,14 +162,20 @@ class Event_Driven_NUCOVID {
                                               << n->state_counts[CRITICAL] << "\t"
                                               << n->state_counts[DEATH] << "\t"
                                               << n->state_counts[RESISTANT] << "\t"
-                                              << n->introduced << endl;
-                                              //<< n->cumu_symptomatic << endl;
+                                              << n->cumu_symptomatic << "\t"
+                                              << n->cumu_admission << "\t"
+                                              << n->introduced;
+
+                        out_buffer.push_back(ss.str());
+                        if (print) {cout << ss.str() << endl;}
                     }
                     day = (int) Now;
                 }
 
                 continue;
             }
+
+            return out_buffer;
         }
 
         //Epidemic size not used for now
@@ -337,6 +352,7 @@ class Event_Driven_NUCOVID {
                 case HOS:
                     event.source_node->state_counts[SYMPTOMATIC_SEVERE]--;      // decrement exposed class
                     event.target_node->state_counts[HOSPITALIZED]++;   // increment symptomatic class
+                    event.target_node->cumu_admission++;
                     break;
                 case CRI:
                     event.source_node->state_counts[HOSPITALIZED]--;      // decrement exposed class
@@ -391,4 +407,30 @@ class Event_Driven_NUCOVID {
         }
 
 };
+
+bool fileExists(const std::string& filename) {
+    struct stat buf;
+    return stat(filename.c_str(), &buf) != -1;
+}
+
+void write_buffer(vector<string>& buffer, string filename, bool overwrite) {
+    string all_output;
+    for (const auto &line : buffer) all_output += (line + "\n");
+
+    if (fileExists(filename) and not overwrite) {
+        cerr << "WARNING: Daily output file already exists: " << filename << endl << "WARNING: Aborting write.\n";
+        return;
+    }
+
+    ofstream file;
+    file.open(filename);
+
+    if (file.is_open()) {  // TODO - add this check everywhere a file is opened
+        file << all_output;
+        file.close();
+    } else {
+        cerr << "ERROR: Could not open daily buffer file for output: " << filename << endl;
+        exit(-842);
+    }
+}
 #endif
