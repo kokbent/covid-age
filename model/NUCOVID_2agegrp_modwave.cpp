@@ -25,7 +25,7 @@ vector<Node*> initialize_2nodes() {
     int N = 1546204*2;
     vector<double> Ki; // S -> E transition rate
 
-    double ini_Ki = 1.07;
+    double ini_Ki = 1.12;
     vector<TimeSeriesAnchorPoint> Ki_ap = {
         {0, 1.0     },
         {28, 0.6263 },
@@ -35,14 +35,9 @@ vector<Node*> initialize_2nodes() {
         {98, 0.07   },
         {129, 0.11  },
         {163, 0.11  },
-        {194, 0.14  },
-        {217, 0.19  },
-        {237, 0.19  },
-        {272, 0.115 },
-        {311, 0.117 },
-        {342, 0.1156},
-        {368, 0.1223},
-        {400, 0.1223}
+        {194, 0.11  },
+        {217, 0.16  },
+        {400, 0.16  }
     };
     for (size_t i = 0; i < Ki_ap.size(); i++) { Ki_ap[i].value = Ki_ap[i].value * ini_Ki; }
     Ki = stepwiseTimeSeries(Ki_ap);
@@ -128,7 +123,7 @@ vector<Node*> initialize_2nodes() {
 
     for(size_t i = 0; i < Pdeath.size(); i++) Pdeath[i] = 0.5;
     
-    ini_Ki = 0.8;
+    ini_Ki = 0.9;
     vector<TimeSeriesAnchorPoint> Ki_ap2 = {
         {0, 1.0     },
         {28, 0.6263 },
@@ -136,16 +131,12 @@ vector<Node*> initialize_2nodes() {
         {37, 0.09   },
         {68, 0.07   },
         {98, 0.07   },
-        {129, 0.105  },
-        {163, 0.105  },
-        {194, 0.135  },
-        {217, 0.185  },
-        {237, 0.185 },
-        {272, 0.115 },
-        {311, 0.117 },
-        {342, 0.1156},
-        {368, 0.1223},
-        {400, 0.1223}
+        {129, 0.11  },
+        {163, 0.11  },
+        {194, 0.11  },
+        {217, 0.16  },
+        {231, 0.16  },
+        {400, 0.16  }
     };
     for (size_t i = 0; i < Ki_ap2.size(); i++) { Ki_ap2[i].value = Ki_ap2[i].value * ini_Ki; }
     //vector<TimeSeriesAnchorPoint> Ki_ap2 = {
@@ -197,8 +188,8 @@ void runsim (int serial) {
     Event_Driven_NUCOVID sim(nodes, infection_matrix);
     sim.rng.seed(serial % 1000);
     sim.Now = 9;
-    sim.rand_infect(3*2, nodes[0]);
-    sim.rand_infect(7*2, nodes[1]);
+    sim.rand_infect(4*2, nodes[0]);//*2
+    sim.rand_infect(9*2, nodes[1]);//*2
     out_buffer = sim.run_simulation(371, false);
     string out_fname = "../out/daily_output." + to_string(serial);
     write_buffer(out_buffer, out_fname, true);
