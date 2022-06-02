@@ -12,6 +12,7 @@
 
 using namespace std;
 
+double inv_adj_inv (double a, double b) { return 1/(1/a - b); }
 
 typedef enum {
     SUSCEPTIBLE, 
@@ -51,6 +52,7 @@ class Node {
         double frac_infectiousness_As;  // infectiousness multiplier for As
         double frac_infectiousness_det; // infectiousness multiplier for detected
         vector<int> state_counts;   // S, E, I, R counts
+        vector<double> time_to_detect;
         size_t cumu_symptomatic;
         size_t cumu_admission;
         size_t introduced;
@@ -59,7 +61,7 @@ class Node {
         Node( int ii, int n, vector<double> ki, double ka, double kp, double km, double ks, 
               double kh, double kc, double kd, vector<vector<double>> kr,
               vector<double> pc, vector<double> pd, vector<vector<double>> pdets,
-              double fia, double fid) {
+              double fia, double fid, vector<double> t2det) {
 
             id = ii;
             N = n;
@@ -81,6 +83,7 @@ class Node {
 
             frac_infectiousness_As = fia;
             frac_infectiousness_det = fid;
+            time_to_detect = t2det;
         }
 
         void reset() {
@@ -102,9 +105,10 @@ class Event {
         eventType type;
         Node* source_node;
         Node* target_node;
-        Event(const Event& o) {  time=o.time; type=o.type; source_node=o.source_node; target_node=o.target_node;}
-        Event(double t, eventType e, Node* sn, Node* tn) {time=t; type=e; source_node=sn; target_node=tn;}
-        Event& operator=(const Event& o) { time=o.time; type=o.type; source_node=o.source_node; target_node=o.target_node; return *this; }
+        bool detect;
+        Event(const Event& o) {  time=o.time; type=o.type; source_node=o.source_node; target_node=o.target_node; detect=o.detect;}
+        Event(double t, eventType e, Node* sn, Node* tn, bool det) {time=t; type=e; source_node=sn; target_node=tn; detect=det;}
+        Event& operator=(const Event& o) { time=o.time; type=o.type; source_node=o.source_node; target_node=o.target_node; detect=o.detect; return *this; }
 };
 
 class compTime {
@@ -140,7 +144,7 @@ class Event_Driven_NUCOVID {
 
         vector<string> run_simulation(double duration, bool print) {
             double start_time = Now;
-            int day = (int) Now;
+            int day = (int) Now - 1;
             vector<string> out_buffer;
             string header = "node\ttime\tKi\tS\tE\tAP\tSYM\tHOS\tCRIT\tDEA\tR\tcumu_sym\tcumu_adm\tintroduced";
 
@@ -152,12 +156,12 @@ class Event_Driven_NUCOVID {
                     for (size_t i = 0; i < nodes.size(); i++) {
                         const Node* n = nodes[i];
                         stringstream ss;
-                        ss << setprecision(3) << n->id << "\t"   
-                                              << (int) Now << "\t"  << n->Ki[day] << "\t" 
+                        ss << setprecision(5) << n->id << "\t"   
+                                              << day << "\t"  << n->Ki[day] << "\t" 
                                               << n->state_counts[SUSCEPTIBLE] << "\t" 
                                               << n->state_counts[EXPOSED] << "\t" 
                                               << n->state_counts[ASYMPTOMATIC] + n->state_counts[PRESYMPTOMATIC]<< "\t" 
-                                              << n->state_counts[SYMPTOMATIC_MILD] + n->state_counts[SYMPTOMATIC_SEVERE] << "\t" 
+                                              << n->state_counts[SYMPTOMATIC_MILD] + n->state_counts[SYMPTOMATIC_SEVERE] << "\t"
                                               << n->state_counts[HOSPITALIZED] + n->state_counts[HOSPITALIZED_CRIT]<< "\t"
                                               << n->state_counts[CRITICAL] << "\t"
                                               << n->state_counts[DEATH] << "\t"
@@ -196,6 +200,7 @@ class Event_Driven_NUCOVID {
         void rand_infect(int k, Node* n) {   // randomly infect k people
             for (unsigned int i = 0; i < k; i++) {
                 infect(n);
+                //import_As(n);
             }
             return;
         }
@@ -218,6 +223,41 @@ class Event_Driven_NUCOVID {
             return chosen;
         }
 
+        void import_As(Node* n) {
+            n->state_counts[SUSCEPTIBLE]--;  // decrement susceptible groupjj
+            n->state_counts[ASYMPTOMATIC]++;      // increment exposed group
+
+            double Ti;
+            double Tr;
+            vector<double> Times;
+            vector<double> Ki_modifier;
+            bool det_flag = false;
+
+            // ASYMPTOMATIC PATH
+            // time to become infectious
+            Ti = Now;
+            if (not det_flag) {
+                det_flag = rand_uniform(0, 1, &rng) < n->get_Pdet((int) Ti, 0) ? true : false;
+            }
+            Times.push_back(Ti);
+            Ki_modifier.push_back(det_flag ? n->frac_infectiousness_det * n->frac_infectiousness_As : n->frac_infectiousness_As);
+ 
+            // time to recovery
+            Tr = rand_exp(n->get_Krec((int) Ti, 0), &rng) + Ti;
+            add_event(Tr, RECA, n, n, det_flag);
+
+            // time to next contact
+            int bin = 0;
+            double Tc = rand_exp(n->get_Ki((int) Ti) * Ki_modifier[bin], &rng) + Ti;
+            while ( Tc < Tr ) {     // does contact occur before recovery?
+                // decide which node to infect
+                size_t infect_node_id = get_infection_node_id(n->id);
+                add_event(Tc, CON, n, nodes[infect_node_id], det_flag); // potential transmission event
+                while (bin < Times.size() - 1 and Times[bin+1] < Tc) {bin++;} // update bin if necessary
+                Tc += rand_exp(n->get_Ki((int) Tc) * Ki_modifier[bin], &rng);
+            }
+        }
+
         void infect(Node* n) {
             assert(n->state_counts[SUSCEPTIBLE] > 0);
             n->state_counts[SUSCEPTIBLE]--;  // decrement susceptible groupjj
@@ -235,60 +275,78 @@ class Event_Driven_NUCOVID {
             double Td = 0;
             vector<double> Times;
             vector<double> Ki_modifier;
+            bool det_flag = false;
 
             // Start differentiating the two paths
             if (Tpres < Tasym) {
                 // SYMPTOMATIC PATH
                 // time to become infectious
+                
+                // Pre-symptomatic phase (no pre-detection here)
                 Ti = Tpres;
-                add_event(Tpres, PRE, n, n);
+                if (not det_flag) det_flag = rand_uniform(0, 1, &rng) < n->get_Pdet((int) Ti, 1);
+                add_event(Tpres, PRE, n, n, det_flag);
                 Times.push_back(Ti);
-                Ki_modifier.push_back(get_detection_modifier( n->get_Pdet((int) Ti, 1), n->frac_infectiousness_det ));
+                Ki_modifier.push_back(det_flag ? n->frac_infectiousness_det : 1);
 
                 double Tmild = rand_exp(n->Kmild, &rng) + Tpres;
                 double Tsevere = rand_exp(n->Ksevere, &rng) + Tpres;
 
                 if (Tmild < Tsevere) {
                     // Mild SYMPTOMATIC PATH
+                    // pre-detection phase
                     Tsym = Tmild;
-                    add_event(Tsym, SYMM, n, n);
+                    add_event(Tsym, SYMM, n, n, det_flag);
                     Times.push_back(Tsym);
-                    Ki_modifier.push_back(get_detection_modifier( 1 - (1 - n->get_Pdet((int) Ti, 1)) * (1 - n->get_Pdet((int) Tsym, 2)), n->frac_infectiousness_det ));
+                    Ki_modifier.push_back(det_flag ? n->frac_infectiousness_det : 1);
 
-                    Tr = rand_exp(n->get_Krec((int) Tsym, 1), &rng) + Tsym;
-                    add_event(Tr, RECM, n, n);
+                    // detection phase
+                    double Tdet = rand_exp(1/n->time_to_detect[1], &rng) + Tsym;
+                    if (not det_flag) det_flag = rand_uniform(0, 1, &rng) < n->get_Pdet((int) Tsym, 2);
+                    Times.push_back(Tdet);
+                    Ki_modifier.push_back(det_flag ? n->frac_infectiousness_det : 1);
+
+                    Tr = rand_exp(inv_adj_inv(n->get_Krec((int) Ti, 1), n->time_to_detect[1]), &rng) + Tdet;
+                    add_event(Tr, RECM, n, n, det_flag);
                 } else {
                     // Severe SYMPTOMATIC PATH
+                    // pre-detection phase
                     Tsym = Tsevere;
-                    add_event(Tsym, SYMS, n, n);
+                    add_event(Tsym, SYMS, n, n, det_flag);
                     Times.push_back(Tsym);
-                    Ki_modifier.push_back(get_detection_modifier( 1 - (1 - n->get_Pdet((int) Ti, 1)) * (1 - n->get_Pdet((int) Tsym, 3)), n->frac_infectiousness_det ));
+                    Ki_modifier.push_back(det_flag ? n->frac_infectiousness_det : 1);
 
-                    Th = rand_exp(n->Khosp, &rng) + Tsym;
-                    add_event(Th, HOS, n, n);
+                    // detection phase
+                    double Tdet = rand_exp(1/n->time_to_detect[2], &rng) + Tsym;
+                    if (not det_flag) det_flag = rand_uniform(0, 1, &rng) < n->get_Pdet((int) Tsym, 3);
+                    Times.push_back(Tdet);
+                    Ki_modifier.push_back(det_flag ? n->frac_infectiousness_det : 1);
+
+                    Th = rand_exp(inv_adj_inv(n->Khosp, n->time_to_detect[2]), &rng) + Tdet;
+                    add_event(Th, HOS, n, n, det_flag);
                     Times.push_back(Th);
-                    Ki_modifier.push_back(get_detection_modifier( 1 - (1 - n->get_Pdet((int) Ti, 1)) * (1 - n->get_Pdet((int) Th, 4)) , 0 ));
+                    Ki_modifier.push_back(det_flag ? n->frac_infectiousness_det : 1);
 
                     if (rand_uniform(0, 1, &rng) > n->get_Pcrit((int) Th)) {
                         // Hospitalized and recovered
                         Tr = rand_exp(n->get_Krec((int) Th, 2), &rng) + Th;
-                        add_event(Tr, RECH, n, n);
+                        add_event(Tr, RECH, n, n, det_flag);
                     } else {
                         // Hospitalized and become critical
                         Tcr = rand_exp(n->Kcrit, &rng) + Th;
-                        add_event(Tcr, CRI, n, n);
+                        add_event(Tcr, CRI, n, n, det_flag);
 
                         if (rand_uniform(0, 1, &rng) > n->get_Pdeath((int) Tcr)) {
                             // Critical and recovered
                             Thc = rand_exp(n->get_Krec((int) Tcr, 3), &rng) + Tcr;
-                            add_event(Thc, HPC, n, n);
+                            add_event(Thc, HPC, n, n, det_flag);
 
                             Tr = rand_exp(n->get_Krec((int) Thc, 4), &rng) + Thc;
-                            add_event(Tr, RECC, n, n);
+                            add_event(Tr, RECC, n, n, det_flag);
                         } else {
                             // Critical and die
                             Tr = rand_exp(n->Kdeath, &rng) + Tcr;
-                            add_event(Tr, DEA, n, n);
+                            add_event(Tr, DEA, n, n, det_flag);
                         } 
                     }
 
@@ -298,13 +356,22 @@ class Event_Driven_NUCOVID {
                 // ASYMPTOMATIC PATH
                 // time to become infectious
                 Ti = Tasym;
-                add_event(Tasym, ASY, n, n);
+                
+                // pre-detection phase
+                add_event(Tasym, ASY, n, n, det_flag);
                 Times.push_back(Ti);
-                Ki_modifier.push_back(get_detection_modifier( n->get_Pdet((int) Ti, 0), n->frac_infectiousness_det ) * n->frac_infectiousness_As);
+                Ki_modifier.push_back(n->frac_infectiousness_As);
+                
+                // detection phase
+                double Tdet = rand_exp(1/n->time_to_detect[0], &rng) + Ti;
+                if (not det_flag) det_flag = rand_uniform(0, 1, &rng) < n->get_Pdet((int) Ti, 0);
+                Times.push_back(Tdet);
+                Ki_modifier.push_back(det_flag ? n->frac_infectiousness_det : n->frac_infectiousness_As);
+                //Ki_modifier.push_back(det_flag ? n->frac_infectiousness_det * n->frac_infectiousness_As : n->frac_infectiousness_As);
 
                 // time to recovery
-                Tr = rand_exp(n->get_Krec((int) Ti, 0), &rng) + Ti;
-                add_event(Tr, RECA, n, n);
+                Tr = rand_exp(inv_adj_inv(n->get_Krec((int) Ti, 0), n->time_to_detect[0]), &rng) + Tdet;
+                add_event(Tr, RECA, n, n, det_flag);
             }
             
             // time to next contact
@@ -313,7 +380,7 @@ class Event_Driven_NUCOVID {
             while ( Tc < Tr ) {     // does contact occur before recovery?
                 // decide which node to infect
                 size_t infect_node_id = get_infection_node_id(n->id);
-                add_event(Tc, CON, n, nodes[infect_node_id]); // potential transmission event
+                add_event(Tc, CON, n, nodes[infect_node_id], det_flag); // potential transmission event
                 while (bin < Times.size() - 1 and Times[bin+1] < Tc) {bin++;} // update bin if necessary
                 Tc += rand_exp(n->get_Ki((int) Tc) * Ki_modifier[bin], &rng);
             }
@@ -330,6 +397,7 @@ class Event_Driven_NUCOVID {
             EventQ.pop();               // remove from Q
 
             Now = event.time;           // advance time
+            //cerr << "Time: " << Now << " Event: " << event.type << endl;
             switch(event.type) {
                 case PRE:
                     event.source_node->state_counts[EXPOSED]--;      // decrement exposed class
@@ -347,7 +415,7 @@ class Event_Driven_NUCOVID {
                 case SYMS:
                     event.source_node->state_counts[PRESYMPTOMATIC]--;      // decrement exposed class
                     event.target_node->state_counts[SYMPTOMATIC_SEVERE]++;   // increment symptomatic class
-                    event.target_node->cumu_symptomatic++;
+                    //event.target_node->cumu_symptomatic++;
                     break;
                 case HOS:
                     event.source_node->state_counts[SYMPTOMATIC_SEVERE]--;      // decrement exposed class
@@ -401,8 +469,8 @@ class Event_Driven_NUCOVID {
             return 1;
         }
 
-        void add_event( double time, eventType type, Node* sn, Node* tn) {
-            EventQ.push( Event(time,type,sn,tn) );
+        void add_event( double time, eventType type, Node* sn, Node* tn, bool detect) {
+            EventQ.push( Event(time,type,sn,tn,detect) );
             return;
         }
 

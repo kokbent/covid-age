@@ -1,5 +1,5 @@
 #include "Time_Series.h"
-#include "Event_Driven_NUCOVID.h"
+#include "Event_Driven_NUCOVID2.h"
 
 vector<vector<double>> transpose2dVector( vector<vector<double>> vec2d ) {
     vector<vector<double>> tvec2d;
@@ -20,12 +20,12 @@ vector<vector<double>> transpose2dVector( vector<vector<double>> vec2d ) {
     return tvec2d;
 }
 
-vector<Node*> initialize_2nodes() {
+vector<Node*> initialize_1node() {
     vector<Node*> nodes;
-    int N = 1546204*2;
+    int N = 2456274;
     vector<double> Ki; // S -> E transition rate
 
-    double ini_Ki = 1.07;
+    double ini_Ki = 1.0522;
     vector<TimeSeriesAnchorPoint> Ki_ap = {
         {0, 1.0     },
         {28, 0.6263 },
@@ -35,23 +35,18 @@ vector<Node*> initialize_2nodes() {
         {98, 0.07   },
         {129, 0.11  },
         {163, 0.11  },
-        {194, 0.14  },
-        {217, 0.19  },
-        {237, 0.19  },
-        {272, 0.115 },
-        {311, 0.117 },
-        {342, 0.1156},
-        {368, 0.1223},
-        {400, 0.1223}
+        {194, 0.11  },
+        {217, 0.16  },
+        {400, 0.16  }
     };
     for (size_t i = 0; i < Ki_ap.size(); i++) { Ki_ap[i].value = Ki_ap[i].value * ini_Ki; }
     Ki = stepwiseTimeSeries(Ki_ap);
     //Ki = linInterpolateTimeSeries(Ki_ap);
 
-    double Kasymp= 0.42/3.677037; // E -> I (asymp) rate
-    double Kpres = 0.58/3.677037; // E -> I (symp) rate
-    double Kmild = 0.97/3.409656;
-    double Kseve = 0.03/3.409656;
+    double Kasymp= 0.4066/3.677037; // E -> I (asymp) rate
+    double Kpres = 0.5934/3.677037; // E -> I (symp) rate
+    double Kmild = 0.921/3.409656;
+    double Kseve = 0.079/3.409656;
     double Khosp = 1.0/4.076704;
     double Kcrit = 1.0/5.592791;
     double Kdeath = 1.0/5.459323;
@@ -69,8 +64,45 @@ vector<Node*> initialize_2nodes() {
     vector<vector<double>> Krec{Krec_asym, Krec_symm, Krec_hosp, Krec_crit, Krec_hpc };
     Krec = transpose2dVector(Krec);
     
-    vector<double> Pcrit(400, 0.25);
-    vector<double> Pdeath(400, 0.1);
+    vector<double> Pcrit;
+    vector<double> Pcrit_tmp;
+    vector<double> Pdeath;
+    vector<double> Pdeath_tmp;
+    vector<TimeSeriesAnchorPoint> Pcrit_ap = {
+        {0, 0.4947      },
+        {48, 0.407469   },
+        {62, 0.353127   },
+        {78, 0.269715   },
+        {109, 0.147316  },
+        {139, 0.218698  },
+        {170, 0.187974  },
+        {201, 0.11607   },
+        {231, 0.165855  },
+        {262, 0.095312  },
+        {311, 0.071865  },
+        {400, 0.071865  },
+    };
+
+    vector<TimeSeriesAnchorPoint> Pdeath_ap = {
+        {0, 0.2033      },
+        {78, 0.28328    },
+        {109, 0.181298  },
+        {139, 0.098412  },
+        {170, 0.068856  },
+        {201, 0.126608  },
+        {231, 0.163615  },
+        {262, 0.193386  },
+        {292, 0.155985  },
+        {323, 0.029525  },
+        {400, 0.029525  },
+    };
+    
+    Pcrit_tmp = stepwiseTimeSeries(Pcrit_ap);
+    Pdeath_tmp = stepwiseTimeSeries(Pdeath_ap);
+    for (size_t i = 0; i < Pcrit_tmp.size(); i++) {
+        Pcrit.push_back(Pcrit_tmp[i] + Pdeath_tmp[i]);
+        Pdeath.push_back(Pdeath_tmp[i] / (Pcrit_tmp[i] + Pdeath_tmp[i]));
+    }
 
     vector<double> Pdet_asym;
     vector<double> Pdet_pres;
@@ -113,68 +145,14 @@ vector<Node*> initialize_2nodes() {
     Pdetect = transpose2dVector(Pdetect);
 
     double frac_infectiousness_As = 0.8;
-    double frac_infectiousness_det = 0.15;
+    double frac_infectiousness_det = 0.00733;
+    //double frac_infectiousness_det = 0.2;
+    vector<double> time_to_detect = {1.904861, 7, 2};
 
     Node* n1 = new  Node(0, N, Ki, Kasymp, Kpres, Kmild, Kseve, Khosp, Kcrit,
                          Kdeath, Krec, Pcrit, Pdeath, Pdetect,
-                         frac_infectiousness_As, frac_infectiousness_det);
+                         frac_infectiousness_As, frac_infectiousness_det, time_to_detect);
     nodes.push_back(n1);
-    
-    N = 1198476*2;
-    Kasymp = 0.23 / 3.677037;
-    Kpres = 0.77/3.677037; // E -> I (symp) rate
-    Kmild = 0.804/3.409656;
-    Kseve = 0.196/3.409656;
-
-    for(size_t i = 0; i < Pdeath.size(); i++) Pdeath[i] = 0.5;
-    
-    ini_Ki = 0.8;
-    vector<TimeSeriesAnchorPoint> Ki_ap2 = {
-        {0, 1.0     },
-        {28, 0.6263 },
-        {33, 0.3526 },
-        {37, 0.09   },
-        {68, 0.07   },
-        {98, 0.07   },
-        {129, 0.105  },
-        {163, 0.105  },
-        {194, 0.135  },
-        {217, 0.185  },
-        {237, 0.185 },
-        {272, 0.115 },
-        {311, 0.117 },
-        {342, 0.1156},
-        {368, 0.1223},
-        {400, 0.1223}
-    };
-    for (size_t i = 0; i < Ki_ap2.size(); i++) { Ki_ap2[i].value = Ki_ap2[i].value * ini_Ki; }
-    //vector<TimeSeriesAnchorPoint> Ki_ap2 = {
-    //    {0, 1.0     },
-    //    {28, 0.6263 },
-    //    {33, 0.3526 },
-    //    {37, 0.09   },
-    //    {68, 0.07   },
-    //    {98, 0.07   },
-    //    {129, 0.11  },
-    //    {163, 0.11  },
-    //    {194, 0.14  },
-    //    {217, 0.19  },
-    //    {237, 0.19  },
-    //    {272, 0.115 },
-    //    {311, 0.117 },
-    //    {342, 0.1156},
-    //    {368, 0.1223},
-    //    {400, 0.1223}
-    //};
-    //for (size_t i = 0; i < Ki_ap2.size(); i++) { Ki_ap2[i].value = Ki_ap2[i].value * ini_Ki; }
-    Ki = stepwiseTimeSeries(Ki_ap2);
-    //Ki = linInterpolateTimeSeries(Ki_ap2);
-
-    Node* n2 = new  Node(1, N, Ki, Kasymp, Kpres, Kmild, Kseve, Khosp, Kcrit,
-                         Kdeath, Krec, Pcrit, Pdeath, Pdetect,
-                         frac_infectiousness_As, frac_infectiousness_det);
-    nodes.push_back(n2);
-
     return(nodes);
 }
 
@@ -182,25 +160,20 @@ void runsim (int serial) {
     cout << "Running Sim " << to_string(serial) << endl;
 
     vector<string> out_buffer;
-    vector<Node*> nodes = initialize_2nodes();
+    vector<Node*> nodes = initialize_1node();
     vector<vector<double>> infection_matrix;
-
-    for(int i = 0; i < 2; i++) {
+    for(int i = 0; i < 1; i++) {
         vector<double> inf_prob;
-        for (int j = 0; j < 2; j++) {
-            double r = i == j ? 0.95 : 0.05;
-            inf_prob.push_back(r);
-        }
+        inf_prob.push_back(1);
         infection_matrix.push_back(inf_prob);
     }
 
     Event_Driven_NUCOVID sim(nodes, infection_matrix);
     sim.rng.seed(serial % 1000);
     sim.Now = 9;
-    sim.rand_infect(3*2, nodes[0]);
-    sim.rand_infect(7*2, nodes[1]);
+    sim.rand_infect(10, nodes[0]);//*2
     out_buffer = sim.run_simulation(371, false);
-    string out_fname = "../out/daily_output." + to_string(serial);
+    string out_fname = "/projects/b1139/covid-age-output/daily_output." + to_string(serial);
     write_buffer(out_buffer, out_fname, true);
 
     return;

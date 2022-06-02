@@ -8,12 +8,12 @@
 #SBATCH --error=log/arrayJob_%A_%a.err
 #SBATCH --output=log/arrayJob_%A_%a.out
 
-offset=7000
+offset=13000
 nloops=50
 ((ini=(${SLURM_ARRAY_TASK_ID}-1)*$nloops+1+$offset))
 ((fin=$ini+$nloops-1))
 
 for (( i=$ini; i<=$fin; i++))
   do
-    ./model $i
+    ./model2g $i
   done
