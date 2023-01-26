@@ -1,0 +1,37 @@
+Model schematic diagram (see Figure 1 of https://www.medrxiv.org/content/10.1101/2022.10.21.22281330v1.full-text)
+
+Parameters:
+Ki - rate of S -> E (Time varying, uses stepwiseTimeSeries in the code to convert knot and value pairs into a vector of ndays)
+
+Kasymp - Numerator is the % of E -> A (as opposed to E -> P); Denominator is the number of days for one to progress from Exposed to Infectious.
+Kpres - Numerator is the % of E -> P (as opposed to E -> A); Denominator is the number of days for one to progress from Exposed to Infectious.
+Typically, 1 - Kasymp = Kpres
+
+Kmild - Numerator is the % of P -> Sm (as opposed to E -> Ss); Denominator is the number of days for one to progress from Presymptomatic to Symptomatic.
+Kseve - Numerator is the % of P -> Ss (as opposed to E -> Sm); Denominator is the number of days for one to progress from Presymptomatic to Symptomatic.
+Typically, 1 - Kmild = Kseve
+
+Khosp - 1/(Mean number of day from Ss to H)
+Kcrit - 1/(Mean number of day from H to C)
+Kdeath - 1/(Mean number of day from C to D)
+
+Krec_asym - 1/(Mean number of day from A to R) (Time varying)
+Krec_symm - 1/(Mean number of day from Sm to R) (Time varying)
+Krec_crit - 1/(Mean number of day from C to Hpc) (Time varying)
+Krec_hpc - 1/(Mean number of day from Hpc to R) (Time varying)
+Krec_hosp - 1/(Mean number of day from H to R) (Time varying)
+
+Pcrit - P(Critical inclusive of Death | H)
+Pdeath - P(Death | Critical)
+
+Pdet_* - Detection probability at * stage (All time varying)
+Detection probability of asymptomatic and presymptomatic is assumed to be 1/6 of Pdet_symm
+
+frac_infectiousness_As - How infectious are asymptomatic wrt symptomatic people
+frac_infectiousness_det - How infectious are detection infection wrt undetected
+
+time_to_detect - vector, mean day to detection for Asymptomatic, Symptomatic mild and Symptomatic severe stages.
+
+The sources for some of the parameters can be found in https://www.medrxiv.org/content/10.1101/2022.10.21.22281330v1.full-text appendix.
+
+Model support multiple nodes that can mix with each other. Model is fitted using an event-driven algorithm, which allows specification of non exponential movement between compartment. However, we only assume exponential movement here, so this model is no different from fitting using a Gillespie method.
