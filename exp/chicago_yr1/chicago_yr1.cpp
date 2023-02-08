@@ -169,8 +169,10 @@ vector<Node*> initialize_1node(const nlohmann::json& params) {
 
 void runsim (const nlohmann::json& params) {
     cout << "Running Sim"<< endl;
-    for (auto& el : params.items()) {
-        std::cout << el.key() << " : " << el.value() << std::endl;
+    if (params["print_params"]) {
+        for (auto& el : params.items()) {
+            std::cout << el.key() << " : " << el.value() << std::endl;
+        }
     }
 
     vector<string> out_buffer;
@@ -186,7 +188,8 @@ void runsim (const nlohmann::json& params) {
     sim.rng.seed(params["random_seed"]);
     sim.Now = 9;
     sim.rand_infect(10, nodes[0]);//*2
-    out_buffer = sim.run_simulation(371, false);
+    double duration = params["duration"].get<double>();
+    out_buffer = sim.run_simulation(duration, false);
 
     string out_fname = params["output_directory"].get<string>()+ "/" +
         params["output_filename"].get<string>();
@@ -223,6 +226,8 @@ void load_default_params(nlohmann::json& params) {
     params["ini_Ki"] = 1.0522;
     params["frac_infectiousness_As"] = 0.8;
     params["frac_infectiousness_det"] =  0.00733;
+    params["duration"] = 371; 
+    params["print_params"] = false;
 }
 
 int main(int argc, char* argv[]) { 
