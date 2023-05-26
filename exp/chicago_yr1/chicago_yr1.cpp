@@ -23,6 +23,16 @@ vector<vector<double>> transpose2dVector( vector<vector<double>> vec2d ) {
     return tvec2d;
 }
 
+void fill_ki_app(const nlohmann::json& params, vector<TimeSeriesAnchorPoint>& Ki_ap) {
+    auto data = params["Ki_ap"];
+    for (auto d : data) {
+        TimeSeriesAnchorPoint pt;
+        pt.sim_day = d[0];
+        pt.value = d[1];
+        Ki_ap.push_back(pt);
+    }
+}
+
 vector<Node*> initialize_1node(const nlohmann::json& params) {
     vector<Node*> nodes;
     int N = 2500000;
@@ -30,23 +40,10 @@ vector<Node*> initialize_1node(const nlohmann::json& params) {
 
     // double ini_Ki = 1.0522;
     double ini_Ki = params["ini_Ki"];
-    vector<TimeSeriesAnchorPoint> Ki_ap = {
-        {0, 1.0     },
-        {28, 0.6263 },
-        {33, 0.3526 },
-        {37, 0.09   },
-        {68, 0.07   },
-        {98, 0.07   },
-        {129, 0.11  },
-        {163, 0.11  },
-        {217, 0.13  },
-        {237, 0.198 },
-        {272, 0.115 },
-        {311, 0.117 },
-        {342, 0.1156},
-        {368, 0.1223},
-        {400, 0.1223}
-    };
+
+    vector<TimeSeriesAnchorPoint> Ki_ap;
+    fill_ki_app(params, Ki_ap);
+    
     for (size_t i = 0; i < Ki_ap.size(); i++) { Ki_ap[i].value = Ki_ap[i].value * ini_Ki; }
     Ki = stepwiseTimeSeries(Ki_ap);
     //Ki = linInterpolateTimeSeries(Ki_ap);
@@ -228,6 +225,23 @@ void load_default_params(nlohmann::json& params) {
     params["frac_infectiousness_det"] =  0.00733;
     params["duration"] = 371; 
     params["print_params"] = false;
+    params["Ki_ap"] =  {
+        {0, 1.0     },
+        {28, 0.6263 },
+        {33, 0.3526 },
+        {37, 0.09   },
+        {68, 0.07   },
+        {98, 0.07   },
+        {129, 0.11  },
+        {163, 0.11  },
+        {217, 0.13  },
+        {237, 0.198 },
+        {272, 0.115 },
+        {311, 0.117 },
+        {342, 0.1156},
+        {368, 0.1223},
+        {400, 0.1223}
+    };
 }
 
 int main(int argc, char* argv[]) { 
