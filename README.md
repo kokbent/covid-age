@@ -12,3 +12,15 @@ See `covid-age-description.txt` for detailed description of the parameters, link
 ## Usage
 
 Use the `Makefile` (`make all`) in `src` to compile the model, then use `Makefile` in the individual experiment folder to compile the code specific to the experiment via `make model`. Then you can do `./model 1234` to run the model with a random number seed of 1234.
+
+## Serialization
+
+The functionality to serialize simulation is added on 2023 Aug 3 commit. To use the functionality, download the `cereal` [library](https://uscilab.github.io/cereal/quickstart.html) and drop the `cereal` folder into `./src/`.
+
+Currently the serialization functionality is reflected in two files, `./src/NUCOVID_cereal.h` and `./exp/chicago_yr1/chicago_yr1_cereal.cpp`. To run it, you need to change the path in the `runsim` section of the cpp file to point to your desired folders navigate to `./exp/chicago_yr1/` and `make model_cereal`. Then type `./model_cereal` to see the usage.
+
+Example:
+```
+./model_cereal 1234 0 # Run first 100 days of simulation using seed 1234 and serialize
+./model_cereal 2134 1 1234 # Pick up from serialize.1234 and run the next 271 days using seed 2134
+```
